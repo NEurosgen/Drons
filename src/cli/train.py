@@ -10,6 +10,7 @@ from torchvision import models, transforms, datasets
 from src.dataset_lit.ImageLoader import ImageLighting
 from src.models.mobilenet.mobilnet import LitMobileNet
 from pathlib import Path
+from src.models.create_model import create_model
 from omegaconf import OmegaConf
 def set_seed(s):
     import random, numpy as np
@@ -54,7 +55,7 @@ def main(cfg: DictConfig):
     
     dm = ImageLighting(path_dir = cfg.path,batch_size=cfg.batch_size,train_transform=train_transform,val_transform = val_transform)
     num_class = count_classes(cfg.path+'/train')
-    model =LitMobileNet(cfg=cfg,num_class=num_class)
+    model = create_model(cfg,num_class=num_class)
     # checkpoint_callback = ModelCheckpoint(
     #     monitor = cfg.callbacks.model_checkpoint.monitor,
     #     mode = cfg.callbacks.model_checkpoint.mode,

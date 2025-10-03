@@ -1,11 +1,12 @@
 path: '/home/temp/MyDir/Projects/Drons/Roads_folder'
 batch_size: 32
-name: 'head'
+name: 'resnet'
+finetune: 'head'
 seed: 42
 dataset:
   data_dir: 'tmp'
 trainer:
-  max_epochs: 30
+  max_epochs: 1
   lr: 1e-3
   device: 'cpu'
 

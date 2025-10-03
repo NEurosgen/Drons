@@ -146,7 +146,7 @@ class LitMobileNet(LightningModule):
     def __init__(self,cfg,num_class):
         super().__init__()
         self.save_hyperparameters(cfg)
-        self.model = create_model(cfg.name,num_class)
+        self.model = create_model(cfg.finetune,num_class)
         self.loss = nn.CrossEntropyLoss()
         self.cfg = cfg
         self.train_acc = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
@@ -163,8 +163,9 @@ class LitMobileNet(LightningModule):
         loss = self.loss(logits,y)
         preds = logits.argmax(dim=1)
 
-        self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("train/acc",  self.train_acc(preds, y), on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_loss", loss, on_epoch=True, prog_bar=True)
+        self.train_acc.update(preds, y)
+        self.log("train_acc", self.train_acc, on_epoch=True, prog_bar=True)
         return loss
     def validation_step(self, batch,batch_idx):
         x,y = batch
@@ -172,8 +173,9 @@ class LitMobileNet(LightningModule):
         loss = self.loss(logits,y)
         preds = logits.argmax(dim=1)
 
-        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/acc",  self.val_acc(preds, y), on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_loss", loss, on_epoch=True, prog_bar=True)
+        self.val_acc.update(preds, y)
+        self.log("val_acc", self.val_acc, on_epoch=True, prog_bar=True)
 
         return loss
     def test_step(self, batch,batch_idx):
@@ -182,8 +184,9 @@ class LitMobileNet(LightningModule):
         loss = self.loss(logits,y)
         preds = logits.argmax(dim=1)
 
-        self.log("test/loss", loss, on_step=False, on_epoch=True)
-        self.log("test/acc",  self.test_acc(preds, y), on_step=False, on_epoch=True)
+        self.log("test_loss", loss, on_epoch=True)
+        self.test_acc.update(preds, y)
+        self.log("test_acc", self.test_acc, on_epoch=True)
         return loss
     def configure_optimizers(self):
         optimizer = Adam(params=self.parameters(),lr=self.cfg.trainer.lr)
