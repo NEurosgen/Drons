@@ -6,3 +6,7 @@ SomeStats.ipynb
 Untitled-1.ipynb
 runs/
 __pycache__/
+HighRPD_parsed/
+UAV-PDD2023/
+yolov8s-cls.pt
+yolov8s.pt

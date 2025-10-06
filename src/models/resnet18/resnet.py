@@ -146,8 +146,8 @@ class LitResNet18(LightningModule):
         logits = self(x)
         loss = self.criterion(logits, y)
         preds = logits.argmax(dim=1)
-        self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("train/acc",  self.train_acc(preds, y), on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_acc",  self.train_acc(preds, y), on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -155,7 +155,7 @@ class LitResNet18(LightningModule):
         logits = self(x)
         loss = self.criterion(logits, y)
         preds = logits.argmax(dim=1)
-        self.log("val/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/acc",  self.val_acc(preds, y), on_step=False, on_epoch=True, prog_bar=True)
 
     def test_step(self, batch, batch_idx):
@@ -163,8 +163,8 @@ class LitResNet18(LightningModule):
         logits = self(x)
         loss = self.criterion(logits, y)
         preds = logits.argmax(dim=1)
-        self.log("test/loss", loss, on_step=False, on_epoch=True)
-        self.log("test/acc",  self.test_acc(preds, y), on_step=False, on_epoch=True)
+        self.log("test_loss", loss, on_step=False, on_epoch=True)
+        self.log("test_acc",  self.test_acc(preds, y), on_step=False, on_epoch=True)
 
     def configure_optimizers(self):
         from torch.optim import AdamW

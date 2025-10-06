@@ -41,7 +41,7 @@ def main(cfg: DictConfig):
     'name': ['resnet','mobilnet']
     }
     num_class = count_classes(cfg.path + '/train')
-    sweep_experiments(cfg,param_grid=param_grid,run_single_trial=run_experiment,num_class=num_class,seeds = (42,21,11,15))
+    sweep_experiments(cfg,param_grid=param_grid,run_single_trial=run_experiment,num_class=num_class,seeds = (42,))
     #print(run_experiment(cfg=cfg,num_class=num_class,seeds = (42,21)))
 
 

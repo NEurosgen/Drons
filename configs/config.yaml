@@ -1,12 +1,12 @@
-path: '/home/temp/MyDir/Projects/Drons/Roads_folder'
-batch_size: 32
-name: 'resnet'
+path: '/home/temp/MyDir/Projects/Drons/HighRPD_parsed'
+batch_size: 8
+name: 'yolo'
 finetune: 'head'
 seed: 42
 dataset:
   data_dir: 'tmp'
 trainer:
-  max_epochs: 1
+  max_epochs: 20
   lr: 1e-3
   device: 'cpu'
 

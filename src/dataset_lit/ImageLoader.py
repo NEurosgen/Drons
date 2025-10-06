@@ -53,7 +53,7 @@ class ImageLighting(LightningDataModule):
 
 
     def setup(self, stage):
-        self.train_ds,self.val_ds,self.test_ds =   ImageDS(self.path_dir+'/train',self.train_transform),ImageDS(self.path_dir+'/valid',self.val_transform),ImageDS(self.path_dir+'/test',self.val_transform)
+        self.train_ds,self.val_ds,self.test_ds =   ImageDS(self.path_dir+'/train',self.train_transform),ImageDS(self.path_dir+'/val',self.val_transform),ImageDS(self.path_dir+'/test',self.val_transform)
            
     def train_dataloader(self):
         return DataLoader(self.train_ds,batch_size=self.batch_size,shuffle=True)
