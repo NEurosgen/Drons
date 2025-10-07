@@ -79,12 +79,12 @@ def create_resnet18(name: str, num_class: int):
 
 # ---------- LightningModule for ResNet18 ----------
 class LitResNet18(LightningModule):
-    def __init__(self, cfg, num_class: int):
+    def __init__(self, cfg, num_class: int,class_weights = None):
         super().__init__()
         self.save_hyperparameters(ignore=["num_class"])
         self.cfg = cfg
         self.model = create_resnet18(cfg.finetune, num_class)
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss(weight=class_weights.to(self.device))
 
         self.train_acc = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
         self.val_acc   = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)

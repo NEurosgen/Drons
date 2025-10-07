@@ -127,6 +127,17 @@ def load_yolo(pretrained = True):
 def detect_head_module(_):  # не нужен для cls, заглушка
     return None
 
+import numpy as np
+def make_class_weights(targets, num_classes, strategy="inverse", beta=0.999):
+    counts = np.bincount(targets, minlength=num_classes)
+    if strategy == "inverse":
+        w = 1.0 / np.clip(counts, 1, None)
+    elif strategy == "effective":
+        w = (1.0 - beta) / (1.0 - np.power(beta, np.clip(counts, 1, None)))
+    else:
+        raise ValueError
+    w = w / w.sum() * num_classes
+    return torch.tensor(w, dtype=torch.float32)
 
 
 def create_model(mode,num_class):
@@ -159,31 +170,34 @@ def replace_last_linear(model: nn.Module, out_features: int) -> nn.Linear:
     setattr(last_parent, last_name, new_fc)  # ВСТАВИЛИ В ДЕРЕВО
     return new_fc  # вернём ссылку
 class LoraYoloCls(nn.Module):
-    def __init__(self,num_class,pretrained = True):
+    def __init__(self, num_class: int, pretrained: bool = True):
         super().__init__()
         self.model = load_yolo(pretrained=pretrained)
-        in_f = self.model.model[9].linear.in_features
-        self.model.model[9].linear = nn.Linear(in_f, num_class)
-        
-        wrap_1x1_convs_with_lora(self.model)
+
+        # Replace the last Linear robustly
+        self.classifier_head = replace_last_linear(self.model, num_class)
+
+        # Wrap 1x1 convs with LoRA (backbone + neck for cls models)
+        wrap_1x1_convs_with_lora(self.model, r=4, alpha=8, dropout=0.2, skip_head=True)
+
+        # Freeze everything, then unfreeze LoRA params + classifier head
         freeze(self.model)
+        # Unfreeze LoRA A/B
         for m in self.model.modules():
             if isinstance(m, LoRAConv2d):
-                for p in m.lora_A.parameters():
-                    p.requires_grad = True
-                for p in m.lora_B.parameters():
-                    p.requires_grad = True
-        
-    def forward(self,x):
+                for p in m.lora_A.parameters(): p.requires_grad = True
+                for p in m.lora_B.parameters(): p.requires_grad = True
+        # Unfreeze classifier head as well
+        unfreeze(self.classifier_head)
+
+    def forward(self, x):
         out = self.model(x)
-        # приведение к logits Tensor
-        if isinstance(out, (list, tuple)):
-            out = out[0]
-        if hasattr(out, "logits"):
-            out = out.logits
+        if isinstance(out, (list, tuple)): out = out[0]
+        if hasattr(out, "logits"): out = out.logits
         if not isinstance(out, torch.Tensor):
             raise TypeError(f"Expected Tensor logits, got {type(out)}")
         return out
+
 class HeadYoloCls(nn.Module):
     def __init__(self, num_class: int, pretrained: bool = True):
         super().__init__()
@@ -207,11 +221,11 @@ class HeadYoloCls(nn.Module):
 from torch.optim.lr_scheduler import LinearLR,CosineAnnealingLR,SequentialLR
 from src.optimizer.schedule_utils import create_cosine,create_warmup
 class LitYOLOCls(LightningModule):
-    def __init__(self, cfg, num_class):
+    def __init__(self, cfg, num_class,class_weights = None):
         super().__init__()
         self.save_hyperparameters(cfg)
         self.model = create_model(cfg.finetune,num_class=num_class)
-        self.loss = nn.CrossEntropyLoss()
+        self.loss = nn.CrossEntropyLoss(weight=class_weights.to(self.device))
         self.cfg = cfg
         self.train_acc = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
         self.val_acc   = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
@@ -228,6 +242,9 @@ class LitYOLOCls(LightningModule):
         self.log("train_loss", loss, on_epoch=True, prog_bar=True)
         self.train_acc.update(preds, y)
         self.log("train_acc", self.train_acc, on_epoch=True, prog_bar=True)
+        opt = self.trainer.optimizers[0]
+        lr0 = opt.param_groups[0]["lr"]
+        self.log("lr", lr0, on_step=True, prog_bar=True, logger=True)
         return loss
 
     def validation_step(self, batch, batch_idx):

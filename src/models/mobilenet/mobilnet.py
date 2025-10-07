@@ -91,11 +91,11 @@ def create_model(name,num_class):
     return model
 from torch.optim import Adam
 class LitMobileNet(LightningModule):
-    def __init__(self,cfg,num_class):
+    def __init__(self,cfg,num_class,class_weights = None):
         super().__init__()
         self.save_hyperparameters(cfg)
         self.model = create_model(cfg.finetune,num_class)
-        self.loss = nn.CrossEntropyLoss()
+        self.loss = nn.CrossEntropyLoss(weight=class_weights.to(self.device))
         self.cfg = cfg
         self.train_acc = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
         self.val_acc   = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)

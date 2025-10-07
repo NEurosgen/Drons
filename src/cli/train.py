@@ -16,6 +16,34 @@ def set_seed(s):
     import random, numpy as np
     random.seed(s); torch.manual_seed(s); np.random.seed(s)
     torch.backends.cudnn.deterministic = True; torch.backends.cudnn.benchmark = False
+import numpy as np
+import torch
+
+def make_class_weights_from_folder(train_root: str, strategy: str = "effective", beta: float = 0.999) -> torch.Tensor:
+    """
+    Считает веса классов из ImageFolder(train_root).
+    strategy: 'inverse' (1/n_c) или 'effective' (Cui et al. 2019)
+    """
+    # Без аугментаций: только привести к RGB, чтобы загрузчик не падал
+    ds_tmp = datasets.ImageFolder(train_root, transform=transforms.Lambda(lambda im: im.convert("RGB")))
+    targets = np.array(ds_tmp.targets)
+    num_classes = len(ds_tmp.classes)
+
+    counts = np.bincount(targets, minlength=num_classes).astype(np.float64)
+    counts = np.clip(counts, 1, None)  # защита от деления на ноль
+
+    if strategy == "inverse":
+        w = 1.0 / counts
+    elif strategy == "effective":
+        # Class-Balanced Loss: w_c = (1 - beta) / (1 - beta**n_c)
+        w = (1.0 - beta) / (1.0 - np.power(beta, counts))
+    else:
+        raise ValueError(f"Unknown strategy: {strategy}")
+
+    # Нормировка, чтобы средний вес ≈ 1
+    w = w / w.sum() * num_classes
+    return torch.tensor(w, dtype=torch.float32)
+
 def count_classes(path: str) -> int | None:
     """
     Counting number of classes in dataset.
@@ -35,6 +63,13 @@ CFG_DIR = Path(__file__).resolve().parents[2] / "configs"
 def main(cfg: DictConfig):
     print(OmegaConf.to_yaml(cfg))
     set_seed(cfg.seed)
+    train_root = os.path.join(cfg.path, 'train')
+    class_weights = make_class_weights_from_folder(
+        train_root,
+        strategy=getattr(cfg, "imbalance_strategy", "effective"),  # можно положить в конфиг
+        beta=getattr(cfg, "imbalance_beta", 0.999)
+    )
+    print(class_weights)
     device = torch.device(cfg["trainer"]["device"] if torch.cuda.is_available() else "cpu")
     logger = TensorBoardLogger(save_dir='./tb_logs',
                                name=cfg.name)
@@ -55,7 +90,7 @@ def main(cfg: DictConfig):
     
     dm = ImageLighting(path_dir = cfg.path,batch_size=cfg.batch_size,train_transform=train_transform,val_transform = val_transform)
     num_class = count_classes(cfg.path+'/train')
-    model = create_model(cfg,num_class=num_class)
+    model = create_model(cfg,num_class=num_class,class_weights=class_weights)
     # checkpoint_callback = ModelCheckpoint(
     #     monitor = cfg.callbacks.model_checkpoint.monitor,
     #     mode = cfg.callbacks.model_checkpoint.mode,

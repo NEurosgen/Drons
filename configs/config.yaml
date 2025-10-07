@@ -6,8 +6,8 @@ seed: 42
 dataset:
   data_dir: 'tmp'
 trainer:
-  max_epochs: 20
-  lr: 1e-3
+  max_epochs: 40
+  lr: 2e-3
   device: 'cpu'
 
 optimizer: adam
