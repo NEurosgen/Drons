@@ -1,106 +1,39 @@
-# # yolo_v8_baseline.py
-# import warnings
-# warnings.filterwarnings("ignore")
 
-# import torch
-# import torch.nn as nn
-
-# # pip install ultralytics==8.3.0
 from ultralytics import YOLO
 import torch
 from torch import nn
 from torchvision import models, transforms, datasets
 from pytorch_lightning import LightningModule
-# # ------------------------------
-# # LoRA for 1x1 Conv2d (groups=1)
-# # ------------------------------
-# class LoRAConv2d(nn.Module):
-#     """
-#     LoRA wrapper for 1x1 Conv2d (groups=1).
-#     Output = base_conv(x) + (alpha/r) * B(A(x))
-#     Base conv is frozen; only A/B are trainable.
-#     """
-#     def __init__(self, base_conv: nn.Conv2d, r: int = 8, alpha: int = 16, dropout: float = 0.0):
-#         super().__init__()
-#         assert isinstance(base_conv, nn.Conv2d)
-#         assert base_conv.kernel_size == (1, 1) and base_conv.groups == 1, \
-#             "LoRAConv2d supports only 1x1 groups=1 convs."
 
-#         self.base = base_conv
-#         for p in self.base.parameters():
-#             p.requires_grad = False
-
-#         self.r = r
-#         self.alpha = alpha
-#         self.scaling = alpha / r
-
-#         in_c  = base_conv.in_channels
-#         out_c = base_conv.out_channels
-
-#         self.lora_A = nn.Conv2d(in_c,  r,    kernel_size=1, bias=False)
-#         self.lora_B = nn.Conv2d(r,     out_c, kernel_size=1, bias=False)
-
-#         nn.init.kaiming_uniform_(self.lora_A.weight, a=5**0.5)
-#         nn.init.zeros_(self.lora_B.weight)
-
-#         self.dropout = nn.Dropout2d(dropout) if dropout > 0 else nn.Identity()
-
-#     def forward(self, x):
-#         base = self.base(x)
-#         delta = self.lora_B(self.lora_A(self.dropout(x))) * self.scaling
-#         return base + delta
-
-#     @torch.no_grad()
-#     def merge_to_base_(self):
-#         # Merge B@A into base weight (in-place)
-#         merged = torch.matmul(
-#             self.lora_B.weight.view(self.lora_B.out_channels, self.lora_B.in_channels),
-#             self.lora_A.weight.view(self.lora_A.in_channels, self.lora_A.out_channels)
-#         ).t().contiguous()  # -> (out_c, in_c)
-#         merged = merged.view(self.base.out_channels, self.base.in_channels, 1, 1)
-#         self.base.weight += merged * self.scaling
-#         self.lora_A.weight.zero_()
-#         self.lora_B.weight.zero_()
-
-# # ------------------------------
-# # Utilities to control trainable
-# # ------------------------------
-# def freeze_all(m: nn.Module):
-#     for p in m.parameters():
-#         p.requires_grad = False
-
-# def unfreeze(m: nn.Module):
-#     for p in m.parameters():
-#         p.requires_grad = True
+from src.fine_tune.lora_conv1 import LoRAConv2d
 
 
+def wrap_1x1_convs_with_lora(root: nn.Module, r=8, alpha=16, dropout=0.0, skip_head=True):
+    """
+    Replace 1x1, groups=1 Conv2d with LoRAConv2d across the model.
+    Optionally skip wrapping the Detect head (so its convs remain normal, trainable).
+    """
+    # optionally identify head subtree to skip
+    head_sub = None
+    if skip_head and hasattr(root, "model"):
+        head_sub = detect_head_module(root)
 
-# def wrap_1x1_convs_with_lora(root: nn.Module, r=8, alpha=16, dropout=0.0, skip_head=True):
-#     """
-#     Replace 1x1, groups=1 Conv2d with LoRAConv2d across the model.
-#     Optionally skip wrapping the Detect head (so its convs remain normal, trainable).
-#     """
-#     # optionally identify head subtree to skip
-#     head_sub = None
-#     if skip_head and hasattr(root, "model"):
-#         head_sub = detect_head_module(root)
+    def _maybe_wrap(module: nn.Module, parent: nn.Module, name: str):
+        child = getattr(parent, name)
+        if isinstance(child, nn.Conv2d) and child.kernel_size == (1, 1) and child.groups == 1:
+            setattr(parent, name, LoRAConv2d(child, r=r, alpha=alpha, dropout=dropout))
+        else:
+            for sub_name, sub_child in list(child.named_children()):
+                # Skip the head subtree if requested
+                if skip_head and (head_sub is not None) and (sub_child is head_sub):
+                    continue
+                _maybe_wrap(sub_child, child, sub_name)
 
-#     def _maybe_wrap(module: nn.Module, parent: nn.Module, name: str):
-#         child = getattr(parent, name)
-#         if isinstance(child, nn.Conv2d) and child.kernel_size == (1, 1) and child.groups == 1:
-#             setattr(parent, name, LoRAConv2d(child, r=r, alpha=alpha, dropout=dropout))
-#         else:
-#             for sub_name, sub_child in list(child.named_children()):
-#                 # Skip the head subtree if requested
-#                 if skip_head and (head_sub is not None) and (sub_child is head_sub):
-#                     continue
-#                 _maybe_wrap(sub_child, child, sub_name)
-
-#     for n, c in list(root.named_children()):
-#         # Skip the head as a whole if requested
-#         if skip_head and (head_sub is not None) and (c is head_sub):
-#             continue
-#         _maybe_wrap(c, root, n)
+    for n, c in list(root.named_children()):
+        # Skip the head as a whole if requested
+        if skip_head and (head_sub is not None) and (c is head_sub):
+            continue
+        _maybe_wrap(c, root, n)
 
 # def set_trainable_mode(det_model: nn.Module, mode: str):
 #     """
@@ -133,10 +66,10 @@ from pytorch_lightning import LightningModule
 #     else:
 #         raise ValueError(f"Unknown finetune mode: {mode}")
 
-# def merge_all_lora_(det_model: nn.Module):
-#     for m in det_model.modules():
-#         if isinstance(m, LoRAConv2d):
-#             m.merge_to_base_()
+def merge_all_lora_(det_model: nn.Module):
+    for m in det_model.modules():
+        if isinstance(m, LoRAConv2d):
+            m.merge_to_base_()
 
 # # ------------------------------
 # # Factory similar to your create_model()
@@ -179,41 +112,105 @@ import torch.nn as nn
 from ultralytics import YOLO
 from pytorch_lightning import LightningModule
 import torchmetrics as tm
+def freeze(model):
+    for p in model.parameters():
+        p.requires_grad = False
+def unfreeze(model):
+    for p in model.parameters():
+        p.requires_grad = True
 
+def load_yolo(pretrained = True):
+    weights = 'yolov8s-cls.pt' if pretrained else 'yolov8s-cls.yaml'
+    yolo = YOLO(weights)            
+    model = yolo.model
+    return model       
 def detect_head_module(_):  # не нужен для cls, заглушка
     return None
 
-class HeadYoloCls(nn.Module):
-    def __init__(self, num_class, pretrained=True):
-        super().__init__()
-        weights = 'yolov8s-cls.pt' if pretrained else 'yolov8s-cls.yaml'
-        yolo = YOLO(weights)            
-        self.model = yolo.model              
-        for p in self.model.parameters():
-            p.requires_grad = False
 
+
+def create_model(mode,num_class):
+    if mode == 'head':
+        return HeadYoloCls(num_class=num_class)
+    if mode == 'lora':
+        return  LoraYoloCls(num_class=num_class)
+
+def replace_last_linear(model: nn.Module, out_features: int) -> nn.Linear:
+    """
+    Ищем ПОСЛЕДНИЙ nn.Linear в дереве и заменяем.
+    Возвращаем ССЫЛКУ на новый слой, чтобы его можно было явно сохранить
+    как self.classifier_head (для регистрации в Lightning).
+    """
+    last_parent, last_name, last_linear = None, None, None
+
+    def dfs(parent: nn.Module):
+        nonlocal last_parent, last_name, last_linear
+        for name, child in parent.named_children():
+            if isinstance(child, nn.Linear):
+                last_parent, last_name, last_linear = parent, name, child
+            dfs(child)
+
+    dfs(model)
+    if last_linear is None:
+        raise RuntimeError("Не найден финальный nn.Linear в классификационной модели YOLOv8.")
+
+    in_f = last_linear.in_features
+    new_fc = nn.Linear(in_f, out_features)
+    setattr(last_parent, last_name, new_fc)  # ВСТАВИЛИ В ДЕРЕВО
+    return new_fc  # вернём ссылку
+class LoraYoloCls(nn.Module):
+    def __init__(self,num_class,pretrained = True):
+        super().__init__()
+        self.model = load_yolo(pretrained=pretrained)
         in_f = self.model.model[9].linear.in_features
         self.model.model[9].linear = nn.Linear(in_f, num_class)
-        for p in self.model.model[9].parameters():
-            p.requires_grad = True
-
-    def forward(self, x):
+        
+        wrap_1x1_convs_with_lora(self.model)
+        freeze(self.model)
+        for m in self.model.modules():
+            if isinstance(m, LoRAConv2d):
+                for p in m.lora_A.parameters():
+                    p.requires_grad = True
+                for p in m.lora_B.parameters():
+                    p.requires_grad = True
+        
+    def forward(self,x):
         out = self.model(x)
-        # Ultralytics иногда возвращает list/tuple/obj
+        # приведение к logits Tensor
         if isinstance(out, (list, tuple)):
             out = out[0]
-        # Некоторые версии могут вернуть объект с .logits
         if hasattr(out, "logits"):
             out = out.logits
         if not isinstance(out, torch.Tensor):
             raise TypeError(f"Expected Tensor logits, got {type(out)}")
         return out
+class HeadYoloCls(nn.Module):
+    def __init__(self, num_class: int, pretrained: bool = True):
+        super().__init__()
+        self.model = load_yolo(pretrained=pretrained)  # <- регистрируем как submodule
+        freeze(self.model)                                  # всё фризим
 
+        # заменяем последний Linear и храним явную ссылку
+        self.classifier_head = replace_last_linear(self.model, num_class)
+        unfreeze(self.classifier_head)                      # разморозим только голову
+
+    def forward(self, x):
+        out = self.model(x)
+        # приведение к logits Tensor
+        if isinstance(out, (list, tuple)):
+            out = out[0]
+        if hasattr(out, "logits"):
+            out = out.logits
+        if not isinstance(out, torch.Tensor):
+            raise TypeError(f"Expected Tensor logits, got {type(out)}")
+        return out
+from torch.optim.lr_scheduler import LinearLR,CosineAnnealingLR,SequentialLR
+from src.optimizer.schedule_utils import create_cosine,create_warmup
 class LitYOLOCls(LightningModule):
     def __init__(self, cfg, num_class):
         super().__init__()
         self.save_hyperparameters(cfg)
-        self.model = HeadYoloCls(num_class=num_class, pretrained=True)
+        self.model = create_model(cfg.finetune,num_class=num_class)
         self.loss = nn.CrossEntropyLoss()
         self.cfg = cfg
         self.train_acc = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
@@ -254,4 +251,24 @@ class LitYOLOCls(LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.cfg.trainer.lr)
+        max_epochs = int(self.cfg.trainer.max_epochs)
+        warmup_epochs = max(1,int(0.05*max_epochs))
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.cfg.trainer.lr)
+        sched_warmup = create_warmup(warmup_epochs=warmup_epochs,optimizer=optimizer)
+        sched_cosine = create_cosine(T_max= (max_epochs - warmup_epochs),optimizer=optimizer,eta_min=(self.cfg.trainer.lr * 0.001)) 
+
+        scheduler = SequentialLR(
+            optimizer=optimizer,
+            schedulers=[sched_warmup,sched_cosine],
+            milestones=[warmup_epochs]
+        )
+
+        return {
+            "optimizer":optimizer,
+            "lr_scheduler":{
+                "scheduler":scheduler,
+                "interval":"epoch",
+                "frequency":1
+            }
+
+        } 
