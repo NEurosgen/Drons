@@ -178,7 +178,7 @@ class LoraYoloCls(nn.Module):
         self.classifier_head = replace_last_linear(self.model, num_class)
 
         # Wrap 1x1 convs with LoRA (backbone + neck for cls models)
-        wrap_1x1_convs_with_lora(self.model, r=4, alpha=8, dropout=0.2, skip_head=True)
+        wrap_1x1_convs_with_lora(self.model, r=4, alpha=8, dropout=0, skip_head=True)
 
         # Freeze everything, then unfreeze LoRA params + classifier head
         freeze(self.model)

@@ -7,7 +7,7 @@ dataset:
   data_dir: 'tmp'
 trainer:
   max_epochs: 40
-  lr: 2e-3
+  lr: 5e-4
   device: 'cpu'
 
 optimizer: adam
