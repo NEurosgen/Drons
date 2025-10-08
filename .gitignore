@@ -1,7 +1,6 @@
 datasets/
 outputs/
 Roads_folder/
-tb_logs/
 SomeStats.ipynb
 Untitled-1.ipynb
 runs/
@@ -10,3 +9,4 @@ HighRPD_parsed/
 UAV-PDD2023/
 yolov8s-cls.pt
 yolov8s.pt
+checkpoint/

@@ -1,0 +1,12 @@
+path: /home/temp/MyDir/Projects/Drons/HighRPD_parsed
+batch_size: 8
+name: yolo
+finetune: head
+seed: 42
+dataset:
+  data_dir: tmp
+trainer:
+  max_epochs: 20
+  lr: 0.0001
+  device: cpu
+optimizer: adam

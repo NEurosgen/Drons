@@ -1,0 +1,11 @@
+path: /home/temp/MyDir/Projects/Drons/Roads_folder
+batch_size: 32
+name: lora
+seed: 42
+dataset:
+  data_dir: tmp
+trainer:
+  max_epochs: 30
+  lr: 0.01
+  device: cpu
+optimizer: adam

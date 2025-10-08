@@ -1,0 +1,13 @@
+cfg:
+  path: /home/temp/MyDir/Projects/Drons/Roads_folder
+  batch_size: 32
+  name: resnet
+  finetune: head
+  seed: 42
+  dataset:
+    data_dir: tmp
+  trainer:
+    max_epochs: 30
+    lr: 0.001
+    device: cpu
+  optimizer: adam
