@@ -75,7 +75,8 @@ def create_resnet18(name: str, num_class: int):
     if name == "lora":
         return wrap_resnet18_with_lora(num_class)
     raise ValueError(f"Unknown resnet18 mode: {name}")
-
+from torch.optim.lr_scheduler import LinearLR,CosineAnnealingLR,SequentialLR
+from src.optimizer.schedule_utils import create_cosine,create_warmup
 
 # ---------- LightningModule for ResNet18 ----------
 class LitResNet18(LightningModule):
@@ -100,6 +101,9 @@ class LitResNet18(LightningModule):
         preds = logits.argmax(dim=1)
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train_acc",  self.train_acc(preds, y), on_step=True, on_epoch=True, prog_bar=True)
+        opt = self.trainer.optimizers[0]
+        lr0 = opt.param_groups[0]["lr"]
+        self.log("lr", lr0, on_step=True, prog_bar=True, logger=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -119,6 +123,24 @@ class LitResNet18(LightningModule):
         self.log("test_acc",  self.test_acc(preds, y), on_step=False, on_epoch=True)
 
     def configure_optimizers(self):
-        from torch.optim import AdamW
-        return AdamW(filter(lambda p: p.requires_grad, self.parameters()),
-                     lr=self.cfg.trainer.lr)
+        max_epochs = int(self.cfg.trainer.max_epochs)
+        warmup_epochs = max(1,int(0.05*max_epochs))
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.cfg.trainer.lr)
+        sched_warmup = create_warmup(warmup_epochs=warmup_epochs,optimizer=optimizer)
+        sched_cosine = create_cosine(T_max= (max_epochs - warmup_epochs),optimizer=optimizer,eta_min=(self.cfg.trainer.lr * 0.001)) 
+
+        scheduler = SequentialLR(
+            optimizer=optimizer,
+            schedulers=[sched_warmup,sched_cosine],
+            milestones=[warmup_epochs]
+        )
+
+        return {
+            "optimizer":optimizer,
+            "lr_scheduler":{
+                "scheduler":scheduler,
+                "interval":"epoch",
+                "frequency":1
+            }
+
+        } 

@@ -90,6 +90,8 @@ def create_model(name,num_class):
         model = FullFTMobilNet(num_class=num_class)
     return model
 from torch.optim import Adam
+from torch.optim.lr_scheduler import LinearLR,CosineAnnealingLR,SequentialLR
+from src.optimizer.schedule_utils import create_cosine,create_warmup
 class LitMobileNet(LightningModule):
     def __init__(self,cfg,num_class,class_weights = None):
         super().__init__()
@@ -114,6 +116,9 @@ class LitMobileNet(LightningModule):
         self.log("train_loss", loss, on_epoch=True, prog_bar=True)
         self.train_acc.update(preds, y)
         self.log("train_acc", self.train_acc, on_epoch=True, prog_bar=True)
+        opt = self.trainer.optimizers[0]
+        lr0 = opt.param_groups[0]["lr"]
+        self.log("lr", lr0, on_step=True, prog_bar=True, logger=True)
         return loss
     def validation_step(self, batch,batch_idx):
         x,y = batch
@@ -137,6 +142,24 @@ class LitMobileNet(LightningModule):
         self.log("test_acc", self.test_acc, on_epoch=True)
         return loss
     def configure_optimizers(self):
-        optimizer = Adam(params=self.parameters(),lr=self.cfg.trainer.lr)
+        max_epochs = int(self.cfg.trainer.max_epochs)
+        warmup_epochs = max(1,int(0.05*max_epochs))
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.cfg.trainer.lr)
+        sched_warmup = create_warmup(warmup_epochs=warmup_epochs,optimizer=optimizer)
+        sched_cosine = create_cosine(T_max= (max_epochs - warmup_epochs),optimizer=optimizer,eta_min=(self.cfg.trainer.lr * 0.001)) 
 
-        return optimizer
+        scheduler = SequentialLR(
+            optimizer=optimizer,
+            schedulers=[sched_warmup,sched_cosine],
+            milestones=[warmup_epochs]
+        )
+
+        return {
+            "optimizer":optimizer,
+            "lr_scheduler":{
+                "scheduler":scheduler,
+                "interval":"epoch",
+                "frequency":1
+            }
+
+        } 
