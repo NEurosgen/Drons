@@ -9,4 +9,4 @@ HighRPD_parsed/
 UAV-PDD2023/
 yolov8s-cls.pt
 yolov8s.pt
-checkpoint/
+checkpoints/
