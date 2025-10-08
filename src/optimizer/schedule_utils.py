@@ -6,8 +6,8 @@ from torch.optim.lr_scheduler import LinearLR,CosineAnnealingLR,SequentialLR
 def create_warmup(warmup_epochs,optimizer,start_factor= 0.01 , end_factor = 1):
     sched_warmup = LinearLR(
         optimizer=optimizer,
-        start_factor=0.01,
-        end_factor=1,
+        start_factor=start_factor,
+        end_factor=end_factor,
         total_iters=warmup_epochs
 
     )

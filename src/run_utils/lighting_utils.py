@@ -57,9 +57,9 @@ def test_step(self, batch):
 def configure_optimizers(self):
     max_epochs = int(self.cfg.trainer.max_epochs)
     warmup_epochs = max(1,int(0.05*max_epochs))
-    optimizer = torch.optim.Adam(self.parameters(), lr=self.cfg.trainer.lr)
+    optimizer = torch.optim.SGD(self.parameters(), lr=self.cfg.trainer.lr)
     sched_warmup = create_warmup(warmup_epochs=warmup_epochs,optimizer=optimizer)
-    sched_cosine = create_cosine(T_max= (max_epochs - warmup_epochs),optimizer=optimizer,eta_min=(self.cfg.trainer.lr * 0.001)) 
+    sched_cosine = create_cosine(T_max= (max_epochs - warmup_epochs),optimizer=optimizer,eta_min=(self.cfg.trainer.lr * 0.0001)) 
 
     scheduler = SequentialLR(
         optimizer=optimizer,

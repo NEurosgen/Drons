@@ -1,0 +1,12 @@
+path: /home/temp/MyDir/Projects/Drons/HighRPD_parsed
+batch_size: 96
+name: mobilnet
+finetune: lora
+seed: 42
+dataset:
+  data_dir: tmp
+trainer:
+  max_epochs: 50
+  lr: 0.01
+  device: cuda
+optimizer: adam

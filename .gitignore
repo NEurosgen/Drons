@@ -10,3 +10,4 @@ UAV-PDD2023/
 yolov8s-cls.pt
 yolov8s.pt
 checkpoints/
+tb_logs_big/

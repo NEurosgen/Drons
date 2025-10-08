@@ -83,7 +83,7 @@ def wrap_mobilenet_v3_small_with_lora(
 import hydra
 def create_model(name,num_class):
     if name =='lora':
-        return wrap_mobilenet_v3_small_with_lora(num_classes=num_class)
+        return wrap_mobilenet_v3_small_with_lora(num_classes=num_class,r=4,alpha=8,dropout=0.1)
     if name == 'head':
         model = HeadFTMobilNet(num_class=num_class)
     if name == 'full':
