@@ -77,70 +77,26 @@ def create_resnet18(name: str, num_class: int):
     raise ValueError(f"Unknown resnet18 mode: {name}")
 from torch.optim.lr_scheduler import LinearLR,CosineAnnealingLR,SequentialLR
 from src.optimizer.schedule_utils import create_cosine,create_warmup
-
+from src.run_utils.lighting_utils import init,training_step,validation_step,configure_optimizers,test_step
 # ---------- LightningModule for ResNet18 ----------
 class LitResNet18(LightningModule):
     def __init__(self, cfg, num_class: int,class_weights = None):
         super().__init__()
-        self.save_hyperparameters(ignore=["num_class"])
-        self.cfg = cfg
-        self.model = create_resnet18(cfg.finetune, num_class)
-        self.criterion = nn.CrossEntropyLoss(weight=class_weights.to(self.device))
 
-        self.train_acc = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
-        self.val_acc   = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
-        self.test_acc  = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
+        init(self,cfg,num_class=num_class,create_model=create_resnet18,class_weights=class_weights)
+    def forward(self,batch):
+        logits = self.model(batch)
+        return logits
 
-    def forward(self, x):
-        return self.model(x)
-
-    def training_step(self, batch, batch_idx):
-        x, y = batch
-        logits = self(x)
-        loss = self.criterion(logits, y)
-        preds = logits.argmax(dim=1)
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("train_acc",  self.train_acc(preds, y), on_step=True, on_epoch=True, prog_bar=True)
-        opt = self.trainer.optimizers[0]
-        lr0 = opt.param_groups[0]["lr"]
-        self.log("lr", lr0, on_step=True, prog_bar=True, logger=True)
+    def training_step(self, batch,batch_idx):
+        loss = training_step(self,batch)
         return loss
-
-    def validation_step(self, batch, batch_idx):
-        x, y = batch
-        logits = self(x)
-        loss = self.criterion(logits, y)
-        preds = logits.argmax(dim=1)
-        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log("val/acc",  self.val_acc(preds, y), on_step=False, on_epoch=True, prog_bar=True)
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        logits = self(x)
-        loss = self.criterion(logits, y)
-        preds = logits.argmax(dim=1)
-        self.log("test_loss", loss, on_step=False, on_epoch=True)
-        self.log("test_acc",  self.test_acc(preds, y), on_step=False, on_epoch=True)
-
+    def validation_step(self, batch,batch_idx):
+        loss = validation_step(self,batch=batch)
+        return loss
+    def test_step(self, batch,batch_idx):
+        loss = test_step(self,batch)
     def configure_optimizers(self):
-        max_epochs = int(self.cfg.trainer.max_epochs)
-        warmup_epochs = max(1,int(0.05*max_epochs))
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.cfg.trainer.lr)
-        sched_warmup = create_warmup(warmup_epochs=warmup_epochs,optimizer=optimizer)
-        sched_cosine = create_cosine(T_max= (max_epochs - warmup_epochs),optimizer=optimizer,eta_min=(self.cfg.trainer.lr * 0.001)) 
+        report = configure_optimizers(self)
 
-        scheduler = SequentialLR(
-            optimizer=optimizer,
-            schedulers=[sched_warmup,sched_cosine],
-            milestones=[warmup_epochs]
-        )
-
-        return {
-            "optimizer":optimizer,
-            "lr_scheduler":{
-                "scheduler":scheduler,
-                "interval":"epoch",
-                "frequency":1
-            }
-
-        } 
+        return  report

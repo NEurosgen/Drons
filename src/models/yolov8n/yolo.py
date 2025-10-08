@@ -35,76 +35,12 @@ def wrap_1x1_convs_with_lora(root: nn.Module, r=8, alpha=16, dropout=0.0, skip_h
             continue
         _maybe_wrap(c, root, n)
 
-# def set_trainable_mode(det_model: nn.Module, mode: str):
-#     """
-#     mode in {"head", "full", "lora"}
-#     - head: freeze backbone+neck, train only detection head
-#     - full: train all
-#     - lora: freeze backbone+neck base weights, train LoRA params + head
-#     """
-#     head = detect_head_module(det_model)
-
-#     if mode == "full":
-#         unfreeze(det_model)
-
-#     elif mode == "head":
-#         freeze_all(det_model)
-#         unfreeze(head)
-
-#     elif mode == "lora":
-#         # Freeze everything
-#         freeze_all(det_model)
-#         # Unfreeze LoRA params (A/B) and head
-#         for m in det_model.modules():
-#             if isinstance(m, LoRAConv2d):
-#                 for p in m.lora_A.parameters():
-#                     p.requires_grad = True
-#                 for p in m.lora_B.parameters():
-#                     p.requires_grad = True
-#         unfreeze(head)
-
-#     else:
-#         raise ValueError(f"Unknown finetune mode: {mode}")
 
 def merge_all_lora_(det_model: nn.Module):
     for m in det_model.modules():
         if isinstance(m, LoRAConv2d):
             m.merge_to_base_()
 
-# # ------------------------------
-# # Factory similar to your create_model()
-# # ------------------------------
-# def create_yolov8s_detector(
-#     finetune: str = "head",   # "head" | "full" | "lora"
-#     num_classes: int | None = None,
-#     lora_r: int = 8,
-#     lora_alpha: int = 16,
-#     lora_dropout: float = 0.0,
-#     pretrained_weights: str = "yolov8s.pt",   # or a custom .pt
-# ):
-#     """
-#     Returns an Ultralytics YOLO object with underlying nn.Module prepared for finetuning.
-#     """
-#     yolo = YOLO(pretrained_weights)  # loads model+weights
-#     det = yolo.model                 # underlying torch model
-
-#     # Optionally change number of classes (if different from pretrain)
-#     if (num_classes is not None) and hasattr(det, "nc") and det.nc != num_classes:
-#         det.nc = num_classes
-#         # Reinit Detect head anchors/cls channels automatically via Ultralytics:
-#         # yolo.model = det  # not needed; it's the same reference
-#         # NOTE: Ultralytics will adjust head on .train() when data YAML is provided.
-#         # If you want to hard-override head channels now, you can rebuild Detect head,
-#         # but letting Ultralytics handle it via data YAML is usually easier.
-
-#     if finetune == "lora":
-#         # Wrap 1x1 convs (backbone+neck) with LoRA; keep head normal
-#         wrap_1x1_convs_with_lora(det, r=lora_r, alpha=lora_alpha, dropout=lora_dropout, skip_head=True)
-
-#     # Set which params are trainable
-#     set_trainable_mode(det, finetune)
-
-#     return yol
 
 
 import torch
@@ -220,72 +156,24 @@ class HeadYoloCls(nn.Module):
         return out
 from torch.optim.lr_scheduler import LinearLR,CosineAnnealingLR,SequentialLR
 from src.optimizer.schedule_utils import create_cosine,create_warmup
+from src.run_utils.lighting_utils import init,training_step,validation_step,configure_optimizers,test_step
 class LitYOLOCls(LightningModule):
-    def __init__(self, cfg, num_class,class_weights = None):
+    def __init__(self,cfg,num_class,class_weights = None):
         super().__init__()
-        self.save_hyperparameters(cfg)
-        self.model = create_model(cfg.finetune,num_class=num_class)
-        self.loss = nn.CrossEntropyLoss(weight=class_weights.to(self.device))
-        self.cfg = cfg
-        self.train_acc = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
-        self.val_acc   = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
-        self.test_acc  = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
+        init(self,cfg,num_class=num_class,create_model=create_model,class_weights=class_weights)
+    def forward(self,batch):
+        logits = self.model(batch)
+        return logits
 
-    def forward(self, x):
-        return self.model(x)
-
-    def training_step(self, batch, batch_idx):
-        x, y = batch
-        logits = self(x)              # [B, C]
-        loss = self.loss(logits, y)
-        preds = logits.argmax(dim=1)
-        self.log("train_loss", loss, on_epoch=True, prog_bar=True)
-        self.train_acc.update(preds, y)
-        self.log("train_acc", self.train_acc, on_epoch=True, prog_bar=True)
-        opt = self.trainer.optimizers[0]
-        lr0 = opt.param_groups[0]["lr"]
-        self.log("lr", lr0, on_step=True, prog_bar=True, logger=True)
+    def training_step(self, batch,batch_idx):
+        loss = training_step(self,batch)
         return loss
-
-    def validation_step(self, batch, batch_idx):
-        x, y = batch
-        logits = self(x)
-        loss = self.loss(logits, y)
-        preds = logits.argmax(dim=1)
-        self.log("val_loss", loss, on_epoch=True, prog_bar=True)
-        self.val_acc.update(preds, y)
-        self.log("val_acc", self.val_acc, on_epoch=True, prog_bar=True)
+    def validation_step(self, batch,batch_idx):
+        loss = validation_step(self,batch=batch)
         return loss
-
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        logits = self(x)
-        loss = self.loss(logits, y)
-        preds = logits.argmax(dim=1)
-        self.log("test_loss", loss, on_epoch=True)
-        self.test_acc.update(preds, y)
-        self.log("test_acc", self.test_acc, on_epoch=True)
-        return loss
-
+    def test_step(self, batch,batch_idx):
+        loss = test_step(self,batch)
     def configure_optimizers(self):
-        max_epochs = int(self.cfg.trainer.max_epochs)
-        warmup_epochs = max(1,int(0.05*max_epochs))
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.cfg.trainer.lr)
-        sched_warmup = create_warmup(warmup_epochs=warmup_epochs,optimizer=optimizer)
-        sched_cosine = create_cosine(T_max= (max_epochs - warmup_epochs),optimizer=optimizer,eta_min=(self.cfg.trainer.lr * 0.001)) 
+        report = configure_optimizers(self)
 
-        scheduler = SequentialLR(
-            optimizer=optimizer,
-            schedulers=[sched_warmup,sched_cosine],
-            milestones=[warmup_epochs]
-        )
-
-        return {
-            "optimizer":optimizer,
-            "lr_scheduler":{
-                "scheduler":scheduler,
-                "interval":"epoch",
-                "frequency":1
-            }
-
-        } 
+        return  report

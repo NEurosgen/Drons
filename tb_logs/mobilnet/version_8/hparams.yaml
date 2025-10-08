@@ -1,0 +1,12 @@
+path: /media/eugen/新加卷/Archiv/HighRPD_parsed
+batch_size: 96
+name: mobilnet
+finetune: lora
+seed: 42
+dataset:
+  data_dir: tmp
+trainer:
+  max_epochs: 50
+  lr: 0.001
+  device: cuda
+optimizer: adam
