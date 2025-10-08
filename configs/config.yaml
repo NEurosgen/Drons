@@ -1,4 +1,4 @@
-path: '/home/temp/MyDir/Projects/Drons/HighRPD_parsed'
+path: '/media/eugen/新加卷/Archiv/HighRPD_parsed'
 batch_size: 32
 name: 'yolo'
 finetune: 'lora'
@@ -8,6 +8,6 @@ dataset:
 trainer:
   max_epochs: 40
   lr: 5e-4
-  device: 'cpu'
+  device: 'cuda'
 
 optimizer: adam

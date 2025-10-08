@@ -12,13 +12,46 @@ from src.models.mobilenet.mobilnet import LitMobileNet
 from pathlib import Path
 from src.models.create_model import create_model
 from omegaconf import OmegaConf
+from torch.utils.data import DataLoader,Dataset
 def set_seed(s):
     import random, numpy as np
     random.seed(s); torch.manual_seed(s); np.random.seed(s)
     torch.backends.cudnn.deterministic = True; torch.backends.cudnn.benchmark = False
 import numpy as np
 import torch
+def data_stats(data_dir,device):
+    transform = transforms.Compose([
+        transforms.Resize((256,256))
+        ,transforms.CenterCrop((224,224)),
+        transforms.ToTensor(),
+        ])
+    ds = datasets.ImageFolder(data_dir,transform = transform)
+    batch_size = 32
+    dl = DataLoader(ds,batch_size=batch_size,num_workers=0,pin_memory=True)
 
+    n_pixels = 0
+    mean = torch.zeros(3).to(device)
+    M2 = torch.zeros(3).to(device)
+
+    for x,_  in dl:
+        x = x.to(device)
+        B,C,H,W = x.shape
+        x = x.view(B,C,-1)
+        batch_pixel = B*H*W
+
+        b_mean = x.mean(dim = (0,2))
+        b_var = x.var(dim=(0,2),unbiased=False)
+
+        delta = b_mean - mean
+        total= n_pixels + batch_pixel
+        new_mean = mean+delta*(batch_pixel/total) 
+        M2 = M2 + b_var*batch_pixel+ (delta**2)*(n_pixels*batch_pixel/total)
+        mean = new_mean
+        n_pixels = total
+
+    var = M2/n_pixels
+    std = torch.sqrt(var)
+    return mean,std
 def make_class_weights_from_folder(train_root: str, strategy: str = "effective", beta: float = 0.999) -> torch.Tensor:
     """
     Считает веса классов из ImageFolder(train_root).
@@ -73,12 +106,13 @@ def main(cfg: DictConfig):
     device = torch.device(cfg["trainer"]["device"] if torch.cuda.is_available() else "cpu")
     logger = TensorBoardLogger(save_dir='./tb_logs',
                                name=cfg.name)
-    mean=[0.485, 0.456, 0.406]
-    std=[0.229, 0.224, 0.225]
+    mean,std = torch.tensor([0.5025, 0.4846, 0.5003]),torch.tensor([0.1574, 0.1490, 0.1549])
+    print(f'mean:{mean}, std:{std}')
     train_transform =  transforms.Compose([transforms.RandomRotation(degrees=30),
                                        transforms.RandomHorizontalFlip(p=0.5),
                                        transforms.Resize((256,256)),
                                        transforms.CenterCrop((224,224)),
+                                       transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
                                        transforms.ToTensor(),
                                        transforms.Normalize(mean=mean, std=std)
                                        ])
