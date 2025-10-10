@@ -76,10 +76,10 @@ def make_class_weights(targets, num_classes, strategy="inverse", beta=0.999):
     return torch.tensor(w, dtype=torch.float32)
 
 
-def create_model(mode,num_class):
-    if mode == 'head':
+def create_model(num_class,cfg):
+    if cfg.finetune == 'head':
         return HeadYoloCls(num_class=num_class)
-    if mode == 'lora':
+    if cfg.finetune == 'lora':
         return  LoraYoloCls(num_class=num_class)
 
 def replace_last_linear(model: nn.Module, out_features: int) -> nn.Linear:
@@ -88,23 +88,22 @@ def replace_last_linear(model: nn.Module, out_features: int) -> nn.Linear:
     Возвращаем ССЫЛКУ на новый слой, чтобы его можно было явно сохранить
     как self.classifier_head (для регистрации в Lightning).
     """
-    last_parent, last_name, last_linear = None, None, None
+    # last_parent, last_name, last_linear = None, None, None
 
-    def dfs(parent: nn.Module):
-        nonlocal last_parent, last_name, last_linear
-        for name, child in parent.named_children():
-            if isinstance(child, nn.Linear):
-                last_parent, last_name, last_linear = parent, name, child
-            dfs(child)
+    # def dfs(parent: nn.Module):
+    #     nonlocal last_parent, last_name, last_linear
+    #     for name, child in parent.named_children():
+    #         if isinstance(child, nn.Linear):
+    #             last_parent, last_name, last_linear = parent, name, child
+    #         dfs(child)
 
-    dfs(model)
-    if last_linear is None:
-        raise RuntimeError("Не найден финальный nn.Linear в классификационной модели YOLOv8.")
-
+    # dfs(model)
+    # if last_linear is None:
+    #     raise RuntimeError("Не найден финальный nn.Linear в классификационной модели YOLOv8.")
+    last_linear = model.model[-1].linear
     in_f = last_linear.in_features
-    new_fc = nn.Linear(in_f, out_features)
-    setattr(last_parent, last_name, new_fc)  # ВСТАВИЛИ В ДЕРЕВО
-    return new_fc  # вернём ссылку
+    model.model[-1].linear = nn.Linear(in_f, out_features)
+    return model.model[-1]  # вернём ссылку
 class LoraYoloCls(nn.Module):
     def __init__(self, num_class: int, pretrained: bool = True):
         super().__init__()
@@ -124,7 +123,7 @@ class LoraYoloCls(nn.Module):
                 for p in m.lora_A.parameters(): p.requires_grad = True
                 for p in m.lora_B.parameters(): p.requires_grad = True
         # Unfreeze classifier head as well
-        unfreeze(self.classifier_head)
+        unfreeze(self.classifier_head.linear)
 
     def forward(self, x):
         out = self.model(x)
@@ -139,7 +138,6 @@ class HeadYoloCls(nn.Module):
         super().__init__()
         self.model = load_yolo(pretrained=pretrained)  # <- регистрируем как submodule
         freeze(self.model)                                  # всё фризим
-
         # заменяем последний Linear и храним явную ссылку
         self.classifier_head = replace_last_linear(self.model, num_class)
         unfreeze(self.classifier_head)                      # разморозим только голову

@@ -137,7 +137,7 @@ def main(cfg: DictConfig):
                                      ])
     
     dm = ImageLighting(path_dir = cfg.path,batch_size=cfg.batch_size,train_transform=train_transform,val_transform = val_transform)
-    model = create_model(cfg,num_class=num_class,class_weights=class_weights)
+    model = create_model(cfg,num_class=num_class)
     # checkpoint_callback = ModelCheckpoint(
     #     monitor = cfg.callbacks.model_checkpoint.monitor,
     #     mode = cfg.callbacks.model_checkpoint.mode,
@@ -145,12 +145,14 @@ def main(cfg: DictConfig):
     #     save_last=True,
     #     filename=f"best"
     # )
+    print(model.model)
     trainer = Trainer(
         max_epochs=cfg.trainer.max_epochs,
         accelerator="gpu" if torch.cuda.is_available() else 'cpu',
         logger=logger,
         deterministic=True,
         callbacks=[viz_cb],
+        gradient_clip_val=1.0,  
     )
     trainer.fit(model,datamodule=dm)
 

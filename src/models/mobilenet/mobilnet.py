@@ -81,12 +81,12 @@ def wrap_mobilenet_v3_small_with_lora(
 
 
 import hydra
-def create_model(name,num_class):
-    if name =='lora':
-        return wrap_mobilenet_v3_small_with_lora(num_classes=num_class,r=4,alpha=8,dropout=0.1)
-    if name == 'head':
+def create_model(num_class,cfg):
+    if cfg.finetune =='lora':
+        return wrap_mobilenet_v3_small_with_lora(num_classes=num_class,r= cfg.lora.r,alpha=cfg.lora.alpha,dropout=cfg.lora.dropout)
+    if  cfg.finetune == 'head':
         model = HeadFTMobilNet(num_class=num_class)
-    if name == 'full':
+    if  cfg.finetune== 'full':
         model = FullFTMobilNet(num_class=num_class)
     return model
 from torch.optim import Adam

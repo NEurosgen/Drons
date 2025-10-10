@@ -10,8 +10,11 @@ import torchmetrics as tm
 
 def init(module,cfg,num_class,create_model,class_weights = None):
     module.save_hyperparameters(cfg)
-    module.model = create_model(cfg.finetune,num_class)
-    module.loss = nn.CrossEntropyLoss(weight=class_weights.to(module.device))
+    module.model = create_model(num_class = num_class,cfg = cfg)
+    if class_weights is not None:
+        module.loss = nn.CrossEntropyLoss(weight=class_weights.to(module.device),label_smoothing=0.1)
+    else:
+        module.loss = nn.CrossEntropyLoss()
     module.cfg = cfg
     module.train_acc = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
     module.val_acc   = tm.Accuracy(task="multiclass", num_classes=num_class, top_k=1)
@@ -57,7 +60,7 @@ def test_step(self, batch):
 def configure_optimizers(self):
     max_epochs = int(self.cfg.trainer.max_epochs)
     warmup_epochs = max(1,int(0.05*max_epochs))
-    optimizer = torch.optim.SGD(self.parameters(), lr=self.cfg.trainer.lr)
+    optimizer = torch.optim.AdamW(self.parameters(), lr=self.cfg.trainer.lr,weight_decay=5e-4)
     sched_warmup = create_warmup(warmup_epochs=warmup_epochs,optimizer=optimizer)
     sched_cosine = create_cosine(T_max= (max_epochs - warmup_epochs),optimizer=optimizer,eta_min=(self.cfg.trainer.lr * 0.0001)) 
 
