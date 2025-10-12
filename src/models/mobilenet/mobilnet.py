@@ -1,115 +1,43 @@
-import torch
-from torch import nn
-from torchvision import models, transforms, datasets
-from pytorch_lightning import LightningModule
-import torchmetrics as tm
-class HeadFTMobilNet(nn.Module):
-    def __init__(self,num_class):
-        super().__init__()
-        self.model =  models.mobilenet_v3_small(pretrained=True)
-        for param in self.model.parameters():
-            param.requires_grad = False
-        feat_num = self.model.classifier[-1].in_features
+from __future__ import annotations
 
-        self.model.classifier = nn.Sequential(
-            nn.Linear(576, 256),  
-            nn.Hardswish(), 
-            nn.Dropout(0.2), #Maybe, I don't think so
-            nn.Linear(256, num_class)
-        )
-    def forward(self,x):
-        out = self.model(x)
-        return out
+from typing import Mapping
 
-
-class FullFTMobilNet(nn.Module):
-    def __init__(self,num_class):
-        super().__init__()
-        self.model =  models.mobilenet_v3_small(pretrained=False)
-        feat_num = self.model.classifier[-1].in_features
-        self.model.classifier = nn.Sequential(
-            nn.Linear(feat_num, 256),  
-            nn.Hardswish(), 
-           # nn.Dropout(0.2), Maybe, I don't think so
-            nn.Linear(256, num_class)
-        )
-    def forward(self,x):
-        out = self.model(x)
-        return out
-
-from src.fine_tune.lora_conv1 import LoRAConv2d
-
-from torchvision import models
-
-from torchvision import models
 import torch.nn as nn
+from torchvision import models
 
-def wrap_mobilenet_v3_small_with_lora(
-    num_classes: int,
-    r: int = 8,
-    alpha: int = 16,
-    dropout: float = 0.0,
-    pretrained: bool = True
-):
+from src.models.base_module import BaseLitModule
 
-    model = models.mobilenet_v3_small(
-        weights=models.MobileNet_V3_Small_Weights.DEFAULT if pretrained else None
-    )
 
-    in_features = model.classifier[3].in_features
+MOBILENET_VARIANTS: Mapping[str, tuple] = {
+    "v3_small": (models.mobilenet_v3_small, models.MobileNet_V3_Small_Weights),
+    "v3_large": (models.mobilenet_v3_large, models.MobileNet_V3_Large_Weights),
+}
 
-    # Заменяем последний слой на наш
-    model.classifier[3] = nn.Linear(in_features, num_classes)
 
-    for p in model.parameters():
-        p.requires_grad = False
-    for p in model.classifier.parameters():
-        p.requires_grad = True
+def _build_mobilenet(model_cfg: Mapping[str, object] | None, num_classes: int) -> nn.Module:
+    cfg = dict(model_cfg or {})
+    variant = str(cfg.get("variant", "v3_small")).lower()
+    if variant not in MOBILENET_VARIANTS:
+        raise ValueError(f"Unsupported MobileNet variant: {variant}")
+    constructor, weight_enum = MOBILENET_VARIANTS[variant]
+    pretrained = bool(cfg.get("pretrained", True))
+    weights = weight_enum.DEFAULT if pretrained else None
+    model = constructor(weights=weights)
 
-    def maybe_wrap(m):
-        for name, child in list(m.named_children()):
-            if isinstance(child, nn.Conv2d) and child.kernel_size == (1, 1) and child.groups == 1:
-                setattr(m, name, LoRAConv2d(child, r=r, alpha=alpha, dropout=dropout))
-            else:
-                maybe_wrap(child)
-
-    maybe_wrap(model.features)
+    if variant.startswith("v3"):
+        head_idx = -1
+        in_features = model.classifier[head_idx].in_features
+        model.classifier[head_idx] = nn.Linear(in_features, num_classes)
+        dropout = cfg.get("dropout")
+        if dropout is not None and len(model.classifier) >= 3:
+            model.classifier[2] = nn.Dropout(p=float(dropout))
+    else:
+        raise ValueError(f"Unhandled MobileNet variant: {variant}")
 
     return model
 
 
+class LitMobileNet(BaseLitModule):
+    def __init__(self, cfg, model_cfg, num_class: int, class_weights=None):
+        super().__init__(cfg, model_cfg, num_class, _build_mobilenet, class_weights=class_weights)
 
-
-import hydra
-def create_model(num_class,cfg):
-    if cfg.finetune =='lora':
-        return wrap_mobilenet_v3_small_with_lora(num_classes=num_class,r= cfg.lora.r,alpha=cfg.lora.alpha,dropout=cfg.lora.dropout)
-    if  cfg.finetune == 'head':
-        model = HeadFTMobilNet(num_class=num_class)
-    if  cfg.finetune== 'full':
-        model = FullFTMobilNet(num_class=num_class)
-    return model
-from torch.optim import Adam
-from torch.optim.lr_scheduler import LinearLR,CosineAnnealingLR,SequentialLR
-from src.optimizer.schedule_utils import create_cosine,create_warmup
-from src.run_utils.lighting_utils import init,training_step,validation_step,configure_optimizers,test_step
-class LitMobileNet(LightningModule):
-    def __init__(self,cfg,num_class,class_weights = None):
-        super().__init__()
-        init(self,cfg,num_class=num_class,create_model=create_model,class_weights=class_weights)
-    def forward(self,batch):
-        logits = self.model(batch)
-        return logits
-
-    def training_step(self, batch,batch_idx):
-        loss = training_step(self,batch)
-        return loss
-    def validation_step(self, batch,batch_idx):
-        loss = validation_step(self,batch=batch)
-        return loss
-    def test_step(self, batch,batch_idx):
-        loss = test_step(self,batch)
-    def configure_optimizers(self):
-        report = configure_optimizers(self)
-
-        return  report
