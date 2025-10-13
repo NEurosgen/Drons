@@ -145,7 +145,7 @@ def main(cfg: DictConfig):
     #     save_last=True,
     #     filename=f"best"
     # )
-    print(model.model)
+    #print(model.model)
     trainer = Trainer(
         max_epochs=cfg.trainer.max_epochs,
         accelerator="gpu" if torch.cuda.is_available() else 'cpu',
