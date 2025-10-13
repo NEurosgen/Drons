@@ -1,17 +1,48 @@
 path: '/home/temp/MyDir/Projects/Drons/HighRPD_parsed'
 batch_size: 96
-name: 'yolo'
-finetune: 'lora'
-lora:
-  r: 8
-  alpha: 16
-  dropout: 0.1
 seed: 42
+
+model:
+  name: efficientnet
+  variant: b0
+  pretrained: true
+
+name: ${model.name}
+
+finetune:
+  strategy: lora
+  lora:
+    r: 8
+    alpha: 16
+    dropout: 0.1
+    target_modules:
+      - 'classifier*'
+      - 'features.*'
+    trainable_modules:
+      - 'classifier*'
+
+# Example progressive fine-tuning configuration:
+# progressive:
+#   schedule:
+#     - epoch: 0
+#       modules: ['classifier*']
+#     - epoch: 5
+#       modules: ['features.6*']
+
 dataset:
   data_dir: 'tmp'
+
 trainer:
   max_epochs: 100
   lr: 1e-3
   device: 'cuda'
 
 optimizer: adam
+
+hyperparameter_search:
+  optuna:
+    direction: maximize
+    metric: val_acc
+    n_trials: 20
+    timeout: null
+

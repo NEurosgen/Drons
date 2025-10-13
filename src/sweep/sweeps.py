@@ -1,9 +1,9 @@
 import json
 import random
-from itertools import product
 from copy import deepcopy
+from itertools import product
 from pathlib import Path
-from typing import Optional, Iterable, Dict, Any, Tuple, List
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 from omegaconf import OmegaConf
@@ -187,5 +187,129 @@ def sweep_experiments(
         print(f"{rank_metric}: {metric_val}")
     else:
         print("\n(no rank_metric provided or not found in results — summary saved)")
+
+    return summary
+
+
+def _select_metric(record: Dict[str, Any], metric: str):
+    if metric in record:
+        return record[metric]
+    linear = record.get("linear_agg")
+    if isinstance(linear, dict) and metric in linear:
+        return linear[metric]
+    return None
+
+
+def optuna_sweep_experiments(
+    base_cfg,
+    param_grid: Dict[str, Iterable[Any]],
+    run_single_trial,
+    num_class,
+    seeds: Iterable[int],
+    *,
+    out_dir: Optional[str] = None,
+    sweep_name: str = "optuna",
+    direction: str = "maximize",
+    metric: str = "val_acc",
+    n_trials: int = 20,
+    timeout: Optional[int] = None,
+    sampler=None,
+    storage: Optional[str] = None,
+    study_name: Optional[str] = None,
+):
+    try:
+        import optuna
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise ImportError("Optuna must be installed to run optuna_sweep_experiments") from exc
+
+    _assert_override_keys_exist(base_cfg, param_grid)
+
+    base_dir = Path(out_dir or f"runs/optuna/{sweep_name}")
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    (base_dir / "_base_config.yaml").write_text(OmegaConf.to_yaml(base_cfg))
+    (base_dir / "_param_grid.json").write_text(
+        json.dumps({k: list(v) for k, v in param_grid.items()}, indent=2, ensure_ascii=False)
+    )
+
+    result_jsonl = base_dir / "results.jsonl"
+
+    def _objective(trial: "optuna.trial.Trial"):
+        params = {}
+        for key, values in param_grid.items():
+            values_list = list(values)
+            if not values_list:
+                raise ValueError(f"Optuna sweep received an empty choice list for '{key}'")
+            params[key] = trial.suggest_categorical(key, values_list)
+
+        tag = "_".join([f"{k.replace('.', '-')}-{v}" for k, v in params.items()])
+        trial_dir = base_dir / f"trial_{trial.number:03d}_{tag}"
+        trial_dir.mkdir(parents=True, exist_ok=True)
+
+        cfg = _apply_overrides_to_cfg(base_cfg, params)
+        out = run_single_trial(cfg=cfg, num_class=num_class, seeds=seeds)
+
+        if not isinstance(out, dict):
+            out = {"result": out}
+
+        record = {
+            "trial_number": trial.number,
+            "tag": tag,
+            "params": params,
+            **out,
+        }
+
+        metric_val = _select_metric(record, metric)
+        if metric_val is None:
+            raise optuna.TrialPruned(f"Metric '{metric}' was not found in trial output")
+
+        record = _to_jsonable(record)
+        record[metric] = float(metric_val)
+
+        with (trial_dir / "result.json").open("w", encoding="utf-8") as f:
+            json.dump(record, f, indent=2, ensure_ascii=False)
+
+        with result_jsonl.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+        return float(metric_val)
+
+    study = optuna.create_study(
+        direction=direction,
+        sampler=sampler,
+        storage=storage,
+        study_name=study_name,
+        load_if_exists=bool(storage and study_name),
+    )
+
+    study.optimize(_objective, n_trials=n_trials, timeout=timeout)
+
+    summary = {
+        "sweep_name": sweep_name,
+        "metric": metric,
+        "direction": direction,
+        "n_trials": len(study.trials),
+        "best_trial": None,
+        "trials": [
+            {
+                "number": trial.number,
+                "value": trial.value,
+                "values": trial.values,
+                "params": trial.params,
+                "state": trial.state.name,
+            }
+            for trial in study.trials
+        ],
+        "optuna_version": optuna.__version__,
+    }
+
+    if study.best_trial is not None:
+        summary["best_trial"] = {
+            "number": study.best_trial.number,
+            "value": study.best_trial.value,
+            "params": study.best_trial.params,
+        }
+
+    (base_dir / "summary.json").write_text(json.dumps(_to_jsonable(summary), indent=2, ensure_ascii=False))
 
     return summary

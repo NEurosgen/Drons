@@ -137,7 +137,7 @@ def main(cfg: DictConfig):
                                      ])
     
     dm = ImageLighting(path_dir = cfg.path,batch_size=cfg.batch_size,train_transform=train_transform,val_transform = val_transform)
-    model = create_model(cfg,num_class=num_class)
+    model = create_model(cfg, num_class=num_class, class_weights=class_weights)
     # checkpoint_callback = ModelCheckpoint(
     #     monitor = cfg.callbacks.model_checkpoint.monitor,
     #     mode = cfg.callbacks.model_checkpoint.mode,
