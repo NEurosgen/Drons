@@ -68,20 +68,36 @@ class ConfusionAndConfidenceCallback(Callback):
         tag_prefix = "val"
 
         if tb is not None and self.cfg.log_images:
+            figures = []
+
             # Confusion matrices
-            tb.add_figure(f"{tag_prefix}/confusion_matrix_counts", self._plot_cm(cm_counts, normalize=False), global_step)
-            tb.add_figure(f"{tag_prefix}/confusion_matrix_normalized", self._plot_cm(cm_norm, normalize=True), global_step)
+            figures.append((f"{tag_prefix}/confusion_matrix_counts", self._plot_cm(cm_counts, normalize=False)))
+            figures.append((f"{tag_prefix}/confusion_matrix_normalized", self._plot_cm(cm_norm, normalize=True)))
 
             # Confidence histograms
-            tb.add_figure(f"{tag_prefix}/confidence_hist_overall", self._plot_conf_hist(probs, preds, targets), global_step)
+            figures.append((f"{tag_prefix}/confidence_hist_overall", self._plot_conf_hist(probs, preds, targets)))
 
             # Per-class histograms (cap how many to avoid spamming)
             K = min(self.cfg.num_classes, self.cfg.max_per_class_hist)
             for c in range(K):
-                tb.add_figure(f"{tag_prefix}/confidence_hist_class_{c}", self._plot_conf_hist(probs, preds, targets, cls=c), global_step)
+                figures.append(
+                    (
+                        f"{tag_prefix}/confidence_hist_class_{c}",
+                        self._plot_conf_hist(probs, preds, targets, cls=c),
+                    )
+                )
 
             # Reliability diagram
-            tb.add_figure(f"{tag_prefix}/reliability_diagram", self._plot_reliability(bin_conf, bin_acc, bin_count, ece), global_step)
+            figures.append(
+                (
+                    f"{tag_prefix}/reliability_diagram",
+                    self._plot_reliability(bin_conf, bin_acc, bin_count, ece),
+                )
+            )
+
+            for tag, fig in figures:
+                tb.add_figure(tag, fig, global_step)
+                plt.close(fig)
 
         # Scalars
         trainer.logger.log_metrics({f"{tag_prefix}/ece": float(ece)}, step=global_step)
