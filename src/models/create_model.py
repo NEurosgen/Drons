@@ -61,7 +61,21 @@ def create_model(cfg, num_class: int, class_weights=None):
 
     lit_cls = MODEL_REGISTRY[key]
     model = lit_cls(cfg, model_cfg, num_class, class_weights=class_weights)
-    if cfg.get("quantization") == True:
+
+    quant_cfg = getattr(cfg, "quantization", None)
+    enabled = False
+    if isinstance(quant_cfg, bool):
+        enabled = quant_cfg
+    elif isinstance(quant_cfg, DictConfig):
+        enabled = bool(quant_cfg.get("enabled", False))
+    elif isinstance(quant_cfg, Mapping):
+        enabled = bool(quant_cfg.get("enabled", False))
+
+    already_prepared = bool(getattr(model, "_quant_prepared", False))
+    if enabled and not already_prepared and hasattr(model, "prepare_quantization"):
+        # BaseLitModule handles automatic preparation on init when requested, but
+        # call explicitly to support custom implementations.
         model.prepare_quantization()
+
     return model
 
