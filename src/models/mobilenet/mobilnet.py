@@ -5,7 +5,7 @@ from typing import Mapping
 import torch.nn as nn
 from torchvision import models
 
-from src.models.base_module import BaseLitModule
+from ..base_module import BaseLitModule
 
 
 MOBILENET_VARIANTS: Mapping[str, tuple] = {

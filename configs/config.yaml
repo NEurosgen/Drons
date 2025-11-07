@@ -1,10 +1,10 @@
-path: '/home/temp/MyDir/Projects/Drons/HighRPD_parsed'
-batch_size: 96
+path: '/home/temp/MyDir/Projects/aspdfpwjfpwejfwpefwef/Drons/HighRPD_parsed'
+batch_size: 24
 seed: 42
 
 model:
-  name: efficientnet
-  variant: b0
+  name:  mobilnet
+  variant: v3_large
   pretrained: true
 
 name: ${model.name}
@@ -12,9 +12,9 @@ name: ${model.name}
 finetune:
   strategy: lora
   lora:
-    r: 8
-    alpha: 16
-    dropout: 0.1
+    r: 4
+    alpha: 8
+    dropout: 0.2
     target_modules:
       - 'classifier*'
       - 'features.*'
@@ -34,7 +34,7 @@ dataset:
 
 trainer:
   max_epochs: 100
-  lr: 3e-3
+  lr: 1e-3
   device: 'cuda'
 
 optimizer: adam
@@ -46,3 +46,4 @@ hyperparameter_search:
     n_trials: 20
     timeout: null
 
+quantization: False

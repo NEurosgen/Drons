@@ -173,8 +173,10 @@ class ConfusionAndConfidenceCallback(Callback):
             conf = conf.cpu().numpy()
 
         fig, ax = plt.subplots(figsize=(6, 4))
-        ax.hist(conf[correct.astype(bool)], bins=20, alpha=0.7, label="correct")
-        ax.hist(conf[~correct.astype(bool)], bins=20, alpha=0.7, label="incorrect")
+        hist_kwargs = {"bins": 20, "range": (0.0, 1.0)}
+
+        ax.hist(conf[correct.astype(bool)], alpha=0.7, label="correct", **hist_kwargs)
+        ax.hist(conf[~correct.astype(bool)], alpha=0.7, label="incorrect", **hist_kwargs)
         title = "Confidence (overall)" if cls is None else f"Confidence (true class={cls})"
         ax.set_title(title)
         ax.set_xlabel("max softmax probability"); ax.set_ylabel("count")
