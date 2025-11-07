@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from ultralytics import YOLO
 
-from src.models.base_module import BaseLitModule
+from ..base_module import BaseLitModule
 
 
 def _replace_last_linear(model: nn.Module, out_features: int) -> None:

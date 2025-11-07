@@ -4,11 +4,11 @@ from typing import Any, Mapping, MutableMapping, Type
 
 from omegaconf import DictConfig, OmegaConf
 
-from src.models.convnext.convnext import LitConvNeXt
-from src.models.efficientnet.efficientnet import LitEfficientNet
-from src.models.mobilenet.mobilnet import LitMobileNet
-from src.models.resnet18.resnet import LitResNet18
-from src.models.yolov8n.yolo import LitYOLOCls
+from .convnext.convnext import LitConvNeXt
+from .efficientnet.efficientnet import LitEfficientNet
+from .mobilenet.mobilnet import LitMobileNet
+from .resnet18.resnet import LitResNet18
+from  .yolov8n.yolo import LitYOLOCls
 
 
 MODEL_REGISTRY: Mapping[str, Type] = {
@@ -60,5 +60,8 @@ def create_model(cfg, num_class: int, class_weights=None):
         raise ValueError(f"Unknown model architecture: {name}")
 
     lit_cls = MODEL_REGISTRY[key]
-    return lit_cls(cfg, model_cfg, num_class, class_weights=class_weights)
+    model = lit_cls(cfg, model_cfg, num_class, class_weights=class_weights)
+    if cfg.get("quantization") == True:
+        model.prepare_quantization()
+    return model
 

@@ -1,15 +1,20 @@
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LinearLR,CosineAnnealingLR,SequentialLR
-from src.optimizer.schedule_utils import create_cosine,create_warmup
 
+from ..optimizer.schedule_utils import create_cosine,create_warmup
 import torch
 from torch import nn
 from torchvision import models, transforms, datasets
 from pytorch_lightning import LightningModule
 import torchmetrics as tm
-
+from omegaconf import OmegaConf
 def init(module,cfg,num_class,create_model,class_weights = None):
-    module.save_hyperparameters(cfg)
+    module.save_hyperparameters({
+            "cfg": OmegaConf.to_container(cfg, resolve=True),
+            "num_class": int(num_class),
+            "class_weights" : class_weights,
+            "class_names": list(getattr(cfg, "class_names", [])),
+        })
     module.model = create_model(num_class_ = num_class,cfg_ = cfg)
     if class_weights is not None:
         module.loss = nn.CrossEntropyLoss(weight=class_weights.to(module.device),label_smoothing=0.1)

@@ -7,10 +7,10 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from torchvision import models, transforms, datasets
-from src.dataset_lit.ImageLoader import ImageLighting
-from src.models.mobilenet.mobilnet import LitMobileNet
+from ..dataset_lit.ImageLoader import ImageLighting
+from ..models.mobilenet.mobilnet import LitMobileNet
 from pathlib import Path
-from src.models.create_model import create_model
+from ..models.create_model import create_model
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader,Dataset
 def set_seed(s):
@@ -91,7 +91,7 @@ def count_classes(path: str) -> int | None:
     except Exception as e:
         print(f"ERROR: {e}")
         return None
-from src.callbacks.confusion_confidence import ConfusionAndConfidenceCallback,ConfusionConfidenceConfig
+from ..callbacks.confusion_confidence import ConfusionAndConfidenceCallback,ConfusionConfidenceConfig
 CFG_DIR = Path(__file__).resolve().parents[2] / "configs" 
 @hydra.main(version_base="1.3", config_path="../../configs", config_name="config")
 def main(cfg: DictConfig):
@@ -113,7 +113,7 @@ def main(cfg: DictConfig):
 
     class_weights = make_class_weights_from_folder(
         train_root,
-        strategy=getattr(cfg, "imbalance_strategy", "effective"),  # можно положить в конфиг
+        strategy=getattr(cfg, "imbalance_strategy", "effective"), 
         beta=getattr(cfg, "imbalance_beta", 0.999)
     )
     print(class_weights)
@@ -146,13 +146,14 @@ def main(cfg: DictConfig):
     #     filename=f"best"
     # )
     #print(model.model)
+
     trainer = Trainer(
         max_epochs=cfg.trainer.max_epochs,
         accelerator="gpu" if torch.cuda.is_available() else 'cpu',
         logger=logger,
         deterministic=True,
         callbacks=[viz_cb],
-        gradient_clip_val=1.0,  
+        #gradient_clip_val=1.0,  
     )
     trainer.fit(model,datamodule=dm)
 

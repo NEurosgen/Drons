@@ -3,16 +3,17 @@ from __future__ import annotations
 from typing import Callable
 
 from pytorch_lightning import LightningModule
-
-from src.fine_tune.strategies import setup_finetune_strategy
-from src.run_utils.lighting_utils import (
+from ..fine_tune.strategies import setup_finetune_strategy
+from ..run_utils.lighting_utils import (
     configure_optimizers,
     init,
     test_step,
     training_step,
     validation_step,
 )
-
+import torch
+from torch.ao.quantization import get_default_qconfig,get_default_qat_qconfig
+from torch.ao.quantization.quantize_fx import QConfigMapping, prepare_fx, convert_fx,prepare_qat_fx
 
 class BaseLitModule(LightningModule):
     """Lightning module with shared training/validation logic and fine-tuning hooks."""
@@ -55,4 +56,10 @@ class BaseLitModule(LightningModule):
         controller = getattr(self, "_finetune_controller", None)
         if controller is not None:
             controller.step(self.current_epoch)
+    # Quantize AU
 
+    def prepare_quantization(self):
+        qcfg = get_default_qat_qconfig("fbgemm")
+        qmap = QConfigMapping().set_global(qcfg)
+        example_input = torch.randn(1,3,244,244)
+        self.model = prepare_qat_fx(self.model,qmap,example_inputs=example_input)
