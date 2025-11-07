@@ -46,3 +46,20 @@ hyperparameter_search:
     n_trials: 20
     timeout: null
 
+onnx_export:
+  enabled: false
+  checkpoint: null
+  output_path: "model.onnx"
+  input_shape: [1, 3, 224, 224]
+  opset_version: 17
+  dynamic_batch: true
+  device: "cpu"
+  input_names: ["input"]
+  output_names: ["logits"]
+  quantize:
+    enabled: false
+    mode: dynamic
+    weight_type: qint8
+    per_channel: false
+    output_path: null
+
